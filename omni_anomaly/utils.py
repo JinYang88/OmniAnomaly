@@ -5,40 +5,47 @@ import pickle
 import numpy as np
 from sklearn.preprocessing import MinMaxScaler
 
-prefix = "processed"
+prefix = "SMAP-MSL/pkls_SMAP"
 
 
-def save_z(z, filename='z'):
+def save_z(z, filename="z"):
     """
     save the sampled z in a txt file
     """
     for i in range(0, z.shape[1], 20):
-        with open(filename + '_' + str(i) + '.txt', 'w') as file:
+        with open(filename + "_" + str(i) + ".txt", "w") as file:
             for j in range(0, z.shape[0]):
                 for k in range(0, z.shape[2]):
-                    file.write('%f ' % (z[j][i][k]))
-                file.write('\n')
+                    file.write("%f " % (z[j][i][k]))
+                file.write("\n")
     i = z.shape[1] - 1
-    with open(filename + '_' + str(i) + '.txt', 'w') as file:
+    with open(filename + "_" + str(i) + ".txt", "w") as file:
         for j in range(0, z.shape[0]):
             for k in range(0, z.shape[2]):
-                file.write('%f ' % (z[j][i][k]))
-            file.write('\n')
+                file.write("%f " % (z[j][i][k]))
+            file.write("\n")
 
 
 def get_data_dim(dataset):
-    if dataset == 'SMAP':
+    if dataset == "SMAP":
         return 25
-    elif dataset == 'MSL':
+    elif dataset == "MSL":
         return 55
-    elif str(dataset).startswith('machine'):
+    elif str(dataset).startswith("machine"):
         return 38
     else:
-        raise ValueError('unknown dataset '+str(dataset))
+        raise ValueError("unknown dataset " + str(dataset))
 
 
-def get_data(dataset, max_train_size=None, max_test_size=None, print_log=True, do_preprocess=True, train_start=0,
-             test_start=0):
+def get_data(
+    dataset,
+    max_train_size=None,
+    max_test_size=None,
+    print_log=True,
+    do_preprocess=True,
+    train_start=0,
+    test_start=0,
+):
     """
     get data from pkl files
 
@@ -52,15 +59,15 @@ def get_data(dataset, max_train_size=None, max_test_size=None, print_log=True, d
         test_end = None
     else:
         test_end = test_start + max_test_size
-    print('load data of:', dataset)
+    print("load data of:", dataset)
     print("train: ", train_start, train_end)
     print("test: ", test_start, test_end)
     x_dim = get_data_dim(dataset)
-    f = open(os.path.join(prefix, dataset + '_train.pkl'), "rb")
+    f = open(os.path.join(prefix, dataset + "_train.pkl"), "rb")
     train_data = pickle.load(f).reshape((-1, x_dim))[train_start:train_end, :]
     f.close()
     try:
-        f = open(os.path.join(prefix, dataset + '_test.pkl'), "rb")
+        f = open(os.path.join(prefix, dataset + "_test.pkl"), "rb")
         test_data = pickle.load(f).reshape((-1, x_dim))[test_start:test_end, :]
         f.close()
     except (KeyError, FileNotFoundError):
@@ -81,27 +88,25 @@ def get_data(dataset, max_train_size=None, max_test_size=None, print_log=True, d
 
 
 def preprocess(df):
-    """returns normalized and standardized data.
-    """
+    """returns normalized and standardized data."""
 
     df = np.asarray(df, dtype=np.float32)
 
     if len(df.shape) == 1:
-        raise ValueError('Data must be a 2-D array')
+        raise ValueError("Data must be a 2-D array")
 
     if np.any(sum(np.isnan(df)) != 0):
-        print('Data contains null values. Will be replaced with 0')
+        print("Data contains null values. Will be replaced with 0")
         df = np.nan_to_num()
 
     # normalize data
     df = MinMaxScaler().fit_transform(df)
-    print('Data normalized')
+    print("Data normalized")
 
     return df
 
 
-def minibatch_slices_iterator(length, batch_size,
-                              ignore_incomplete_batch=False):
+def minibatch_slices_iterator(length, batch_size, ignore_incomplete_batch=False):
     """
     Iterate through all the mini-batch slices.
 
@@ -148,21 +153,30 @@ class BatchSlidingWindow(object):
             (default :obj:`False`)
     """
 
-    def __init__(self, array_size, window_size, batch_size, excludes=None,
-                 shuffle=False, ignore_incomplete_batch=False):
+    def __init__(
+        self,
+        array_size,
+        window_size,
+        batch_size,
+        excludes=None,
+        shuffle=False,
+        ignore_incomplete_batch=False,
+    ):
         # check the parameters
         if window_size < 1:
-            raise ValueError('`window_size` must be at least 1')
+            raise ValueError("`window_size` must be at least 1")
         if array_size < window_size:
-            raise ValueError('`array_size` must be at least as large as '
-                             '`window_size`')
+            raise ValueError(
+                "`array_size` must be at least as large as " "`window_size`"
+            )
         if excludes is not None:
             excludes = np.asarray(excludes, dtype=np.bool)
             expected_shape = (array_size,)
             if excludes.shape != expected_shape:
-                raise ValueError('The shape of `excludes` is expected to be '
-                                 '{}, but got {}'.
-                                 format(expected_shape, excludes.shape))
+                raise ValueError(
+                    "The shape of `excludes` is expected to be "
+                    "{}, but got {}".format(expected_shape, excludes.shape)
+                )
 
         # compute which points are not excluded
         if excludes is not None:
@@ -206,7 +220,7 @@ class BatchSlidingWindow(object):
         # check the parameters
         arrays = tuple(np.asarray(a) for a in arrays)
         if not arrays:
-            raise ValueError('`arrays` must not be empty')
+            raise ValueError("`arrays` must not be empty")
 
         # shuffle if required
         if self._shuffle:
@@ -214,8 +228,9 @@ class BatchSlidingWindow(object):
 
         # iterate through the mini-batches
         for s in minibatch_slices_iterator(
-                length=len(self._indices),
-                batch_size=self._batch_size,
-                ignore_incomplete_batch=self._ignore_incomplete_batch):
+            length=len(self._indices),
+            batch_size=self._batch_size,
+            ignore_incomplete_batch=self._ignore_incomplete_batch,
+        ):
             idx = self._indices[s] + self._offsets
             yield tuple(a[idx] if len(a.shape) == 1 else a[idx, :] for a in arrays)

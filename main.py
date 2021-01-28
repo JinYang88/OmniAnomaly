@@ -23,7 +23,8 @@ from omni_anomaly.utils import get_data_dim, get_data, save_z
 
 class ExpConfig(Config):
     # dataset configuration
-    dataset = "machine-1-1"
+    # dataset = "machine-1-1"
+    dataset = "SMAP"
     x_dim = get_data_dim(dataset)
 
     # model architecture configuration
@@ -32,11 +33,11 @@ class ExpConfig(Config):
 
     # model parameters
     z_dim = 3
-    rnn_cell = 'GRU'  # 'GRU', 'LSTM' or 'Basic'
+    rnn_cell = "GRU"  # 'GRU', 'LSTM' or 'Basic'
     rnn_num_hidden = 500
     window_length = 100
     dense_dim = 500
-    posterior_flow_type = 'nf'  # 'nf' or None
+    posterior_flow_type = "nf"  # 'nf' or None
     nf_layers = 20  # for nf
     max_epoch = 10
     train_start = 0
@@ -57,12 +58,12 @@ class ExpConfig(Config):
 
     # the range and step-size for score for searching best-f1
     # may vary for different dataset
-    bf_search_min = -400.
-    bf_search_max = 400.
-    bf_search_step_size = 1.
+    bf_search_min = -400.0
+    bf_search_max = 400.0
+    bf_search_step_size = 1.0
 
     valid_step_freq = 100
-    gradient_clip_norm = 10.
+    gradient_clip_norm = 10.0
 
     early_stop = True  # whether to apply early stop method
 
@@ -78,49 +79,60 @@ class ExpConfig(Config):
     # outputs config
     save_z = False  # whether to save sampled z in hidden space
     get_score_on_dim = False  # whether to get score on dim. If `True`, the score will be a 2-dim ndarray
-    save_dir = 'model'
+    save_dir = "model"
     restore_dir = None  # If not None, restore variables from this dir
-    result_dir = 'result'  # Where to save the result file
-    train_score_filename = 'train_score.pkl'
-    test_score_filename = 'test_score.pkl'
+    result_dir = "result"  # Where to save the result file
+    train_score_filename = "train_score.pkl"
+    test_score_filename = "test_score.pkl"
 
 
 def main():
     logging.basicConfig(
-        level='INFO',
-        format='%(asctime)s [%(levelname)s] %(name)s: %(message)s'
+        level="INFO", format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
     )
 
     # prepare the data
-    (x_train, _), (x_test, y_test) = \
-        get_data(config.dataset, config.max_train_size, config.max_test_size, train_start=config.train_start,
-                 test_start=config.test_start)
+    (x_train, _), (x_test, y_test) = get_data(
+        config.dataset,
+        config.max_train_size,
+        config.max_test_size,
+        train_start=config.train_start,
+        test_start=config.test_start,
+    )
 
     # construct the model under `variable_scope` named 'model'
-    with tf.variable_scope('model') as model_vs:
+    with tf.variable_scope("model") as model_vs:
         model = OmniAnomaly(config=config, name="model")
 
         # construct the trainer
-        trainer = Trainer(model=model,
-                          model_vs=model_vs,
-                          max_epoch=config.max_epoch,
-                          batch_size=config.batch_size,
-                          valid_batch_size=config.test_batch_size,
-                          initial_lr=config.initial_lr,
-                          lr_anneal_epochs=config.lr_anneal_epoch_freq,
-                          lr_anneal_factor=config.lr_anneal_factor,
-                          grad_clip_norm=config.gradient_clip_norm,
-                          valid_step_freq=config.valid_step_freq)
+        trainer = Trainer(
+            model=model,
+            model_vs=model_vs,
+            max_epoch=config.max_epoch,
+            batch_size=config.batch_size,
+            valid_batch_size=config.test_batch_size,
+            initial_lr=config.initial_lr,
+            lr_anneal_epochs=config.lr_anneal_epoch_freq,
+            lr_anneal_factor=config.lr_anneal_factor,
+            grad_clip_norm=config.gradient_clip_norm,
+            valid_step_freq=config.valid_step_freq,
+        )
 
         # construct the predictor
-        predictor = Predictor(model, batch_size=config.batch_size, n_z=config.test_n_z,
-                              last_point_only=True)
+        predictor = Predictor(
+            model,
+            batch_size=config.batch_size,
+            n_z=config.test_n_z,
+            last_point_only=True,
+        )
 
         with tf.Session().as_default():
 
             if config.restore_dir is not None:
                 # Restore variables from `save_dir`.
-                saver = VariableSaver(get_variables_as_dict(model_vs), config.restore_dir)
+                saver = VariableSaver(
+                    get_variables_as_dict(model_vs), config.restore_dir
+                )
                 saver.restore()
 
             if config.max_epoch > 0:
@@ -128,19 +140,19 @@ def main():
                 train_start = time.time()
                 best_valid_metrics = trainer.fit(x_train)
                 train_time = (time.time() - train_start) / config.max_epoch
-                best_valid_metrics.update({
-                    'train_time': train_time
-                })
+                best_valid_metrics.update({"train_time": train_time})
             else:
                 best_valid_metrics = {}
 
             # get score of train set for POT algorithm
             train_score, train_z, train_pred_speed = predictor.get_score(x_train)
             if config.train_score_filename is not None:
-                with open(os.path.join(config.result_dir, config.train_score_filename), 'wb') as file:
+                with open(
+                    os.path.join(config.result_dir, config.train_score_filename), "wb"
+                ) as file:
                     pickle.dump(train_score, file)
             if config.save_z:
-                save_z(train_z, 'train_z')
+                save_z(train_z, "train_z")
 
             if x_test is not None:
                 # get score of test set
@@ -148,13 +160,15 @@ def main():
                 test_score, test_z, pred_speed = predictor.get_score(x_test)
                 test_time = time.time() - test_start
                 if config.save_z:
-                    save_z(test_z, 'test_z')
-                best_valid_metrics.update({
-                    'pred_time': pred_speed,
-                    'pred_total_time': test_time
-                })
+                    save_z(test_z, "test_z")
+                best_valid_metrics.update(
+                    {"pred_time": pred_speed, "pred_total_time": test_time}
+                )
                 if config.test_score_filename is not None:
-                    with open(os.path.join(config.result_dir, config.test_score_filename), 'wb') as file:
+                    with open(
+                        os.path.join(config.result_dir, config.test_score_filename),
+                        "wb",
+                    ) as file:
                         pickle.dump(test_score, file)
 
                 if y_test is not None and len(y_test) >= len(test_score):
@@ -164,27 +178,39 @@ def main():
                         train_score = np.sum(train_score, axis=-1)
 
                     # get best f1
-                    t, th = bf_search(test_score, y_test[-len(test_score):],
-                                      start=config.bf_search_min,
-                                      end=config.bf_search_max,
-                                      step_num=int(abs(config.bf_search_max - config.bf_search_min) /
-                                                   config.bf_search_step_size),
-                                      display_freq=50)
+                    t, th = bf_search(
+                        test_score,
+                        y_test[-len(test_score) :],
+                        start=config.bf_search_min,
+                        end=config.bf_search_max,
+                        step_num=int(
+                            abs(config.bf_search_max - config.bf_search_min)
+                            / config.bf_search_step_size
+                        ),
+                        display_freq=50,
+                    )
                     # get pot results
-                    pot_result = pot_eval(train_score, test_score, y_test[-len(test_score):], level=config.level)
+                    pot_result = pot_eval(
+                        train_score,
+                        test_score,
+                        y_test[-len(test_score) :],
+                        level=config.level,
+                    )
 
                     # output the results
-                    best_valid_metrics.update({
-                        'best-f1': t[0],
-                        'precision': t[1],
-                        'recall': t[2],
-                        'TP': t[3],
-                        'TN': t[4],
-                        'FP': t[5],
-                        'FN': t[6],
-                        'latency': t[-1],
-                        'threshold': th
-                    })
+                    best_valid_metrics.update(
+                        {
+                            "best-f1": t[0],
+                            "precision": t[1],
+                            "recall": t[2],
+                            "TP": t[3],
+                            "TN": t[4],
+                            "FP": t[5],
+                            "FN": t[6],
+                            "latency": t[-1],
+                            "threshold": th,
+                        }
+                    )
                     best_valid_metrics.update(pot_result)
                 results.update_metrics(best_valid_metrics)
 
@@ -193,11 +219,11 @@ def main():
                 var_dict = get_variables_as_dict(model_vs)
                 saver = VariableSaver(var_dict, config.save_dir)
                 saver.save()
-            print('=' * 30 + 'result' + '=' * 30)
+            print("=" * 30 + "result" + "=" * 30)
             pprint(best_valid_metrics)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
 
     # get config obj
     config = ExpConfig()
@@ -208,7 +234,7 @@ if __name__ == '__main__':
     arg_parser.parse_args(sys.argv[1:])
     config.x_dim = get_data_dim(config.dataset)
 
-    print_with_title('Configurations', pformat(config.to_dict()), after='\n')
+    print_with_title("Configurations", pformat(config.to_dict()), after="\n")
 
     # open the result object and prepare for result directories if specified
     results = MLResults(config.result_dir)
@@ -216,5 +242,5 @@ if __name__ == '__main__':
     results.make_dirs(config.save_dir, exist_ok=True)
     with warnings.catch_warnings():
         # suppress DeprecationWarning from NumPy caused by codes in TensorFlow-Probability
-        warnings.filterwarnings("ignore", category=DeprecationWarning, module='numpy')
+        warnings.filterwarnings("ignore", category=DeprecationWarning, module="numpy")
         main()
