@@ -23,8 +23,8 @@ from omni_anomaly.utils import get_data_dim, get_data, save_z
 
 class ExpConfig(Config):
     # dataset configuration
-    # dataset = "machine-1-1"
-    dataset = "SMAP"
+    dataset = "machine-1-1"
+    # dataset = "SMAP"
     x_dim = get_data_dim(dataset)
 
     # model architecture configuration
@@ -74,7 +74,7 @@ class ExpConfig(Config):
     # SMD group 1: 0.0050
     # SMD group 2: 0.0075
     # SMD group 3: 0.0001
-    level = 0.01
+    level = 0.0050
 
     # outputs config
     save_z = False  # whether to save sampled z in hidden space
