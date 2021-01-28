@@ -5,7 +5,7 @@ import pickle
 import numpy as np
 from sklearn.preprocessing import MinMaxScaler
 
-prefix = "SMAP-MSL/pkls_SMAP"
+prefix = "processed"
 
 
 def save_z(z, filename="z"):
