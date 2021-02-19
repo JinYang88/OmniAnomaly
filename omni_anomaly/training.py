@@ -211,7 +211,7 @@ class Trainer(VarScopeObject):
         """
         return self._model
 
-    def fit(self, values, valid_portion=0.3, summary_dir=None):
+    def fit(self, values, valid_portion=0.001, summary_dir=None):
         """
         Train the :class:`OmniAnomaly` model with given data.
 

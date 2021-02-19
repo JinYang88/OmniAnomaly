@@ -253,7 +253,7 @@ if __name__ == "__main__":
 
         with open("running_time.txt", "a+") as fw:
             tr_time = best_valid_metrics["train_time"]
-            te_time = best_valid_metrics["pred_total_time"]
+            te_time = best_valid_metrics["pred_time"]
             fw.write("window_size: {} ".format(config.window_length))
             fw.write("train: {:.4f} ".format(tr_time))
             fw.write("test: {:.4f}\n".format(te_time))

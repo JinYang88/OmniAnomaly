@@ -126,4 +126,4 @@ class Predictor(VarScopeObject):
             # merge the results of mini-batches
             result = np.concatenate(collector, axis=0)
             result_z = np.concatenate(collector_z, axis=0)
-            return result, result_z, np.mean(pred_time)
+            return result, result_z, np.sum(pred_time)
