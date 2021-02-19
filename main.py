@@ -39,7 +39,7 @@ class ExpConfig(Config):
     dense_dim = 500
     posterior_flow_type = "nf"  # 'nf' or None
     nf_layers = 20  # for nf
-    max_epoch = 10
+    max_epoch = 1
     train_start = 0
     max_train_size = None  # `None` means full train set
     batch_size = 64
@@ -65,7 +65,7 @@ class ExpConfig(Config):
     valid_step_freq = 100
     gradient_clip_norm = 10.0
 
-    early_stop = True  # whether to apply early stop method
+    early_stop = False  # whether to apply early stop method
 
     # pot parameters
     # recommend values for `level`:
@@ -74,7 +74,7 @@ class ExpConfig(Config):
     # SMD group 1: 0.0050
     # SMD group 2: 0.0075
     # SMD group 3: 0.0001
-    level = 0.0050
+    level = 0.07
 
     # outputs config
     save_z = False  # whether to save sampled z in hidden space
@@ -139,8 +139,8 @@ def main():
                 # train the model
                 train_start = time.time()
                 best_valid_metrics = trainer.fit(x_train)
-                train_time = (time.time() - train_start) / config.max_epoch
-                best_valid_metrics.update({"train_time": train_time})
+                train_time = time.time() - train_start
+                # best_valid_metrics.update({"train_time": train_time})
             else:
                 best_valid_metrics = {}
 
@@ -222,6 +222,8 @@ def main():
             print("=" * 30 + "result" + "=" * 30)
             pprint(best_valid_metrics)
 
+            return best_valid_metrics
+
 
 if __name__ == "__main__":
 
@@ -230,8 +232,12 @@ if __name__ == "__main__":
 
     # parse the arguments
     arg_parser = ArgumentParser()
+    arg_parser.add_argument("-ws", "--window_size", default=32, required=False)
     register_config_arguments(config, arg_parser)
-    arg_parser.parse_args(sys.argv[1:])
+    args = arg_parser.parse_args(sys.argv[1:])
+
+    config.window_length = args.window_size
+
     config.x_dim = get_data_dim(config.dataset)
 
     print_with_title("Configurations", pformat(config.to_dict()), after="\n")
@@ -243,4 +249,11 @@ if __name__ == "__main__":
     with warnings.catch_warnings():
         # suppress DeprecationWarning from NumPy caused by codes in TensorFlow-Probability
         warnings.filterwarnings("ignore", category=DeprecationWarning, module="numpy")
-        main()
+        best_valid_metrics = main()
+
+        with open("running_time.txt", "a+") as fw:
+            tr_time = best_valid_metrics["train_time"]
+            te_time = best_valid_metrics["pred_total_time"]
+            fw.write("window_size: {} ".format(config.window_length))
+            fw.write("train: {:.4f} ".format(tr_time))
+            fw.write("test: {:.4f}\n".format(te_time))

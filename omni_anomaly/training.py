@@ -6,14 +6,16 @@ import six
 import tensorflow as tf
 from tfsnippet.scaffold import TrainLoop
 from tfsnippet.shortcuts import VarScopeObject
-from tfsnippet.utils import (reopen_variable_scope,
-                             get_default_session_or_error,
-                             ensure_variables_initialized,
-                             get_variables_as_dict)
+from tfsnippet.utils import (
+    reopen_variable_scope,
+    get_default_session_or_error,
+    ensure_variables_initialized,
+    get_variables_as_dict,
+)
 
 from omni_anomaly.utils import BatchSlidingWindow
 
-__all__ = ['Trainer']
+__all__ = ["Trainer"]
 
 
 class Trainer(VarScopeObject):
@@ -67,15 +69,29 @@ class Trainer(VarScopeObject):
             (argument of :class:`tfsnippet.utils.VarScopeObject`).
     """
 
-    def __init__(self, model, model_vs=None, n_z=None,
-                 feed_dict=None, valid_feed_dict=None,
-                 use_regularization_loss=True,
-                 max_epoch=256, max_step=None, batch_size=256,
-                 valid_batch_size=1024, valid_step_freq=100,
-                 initial_lr=0.001, lr_anneal_epochs=10, lr_anneal_factor=0.75,
-                 optimizer=tf.train.AdamOptimizer, optimizer_params=None,
-                 grad_clip_norm=50.0, check_numerics=True,
-                 name=None, scope=None):
+    def __init__(
+        self,
+        model,
+        model_vs=None,
+        n_z=None,
+        feed_dict=None,
+        valid_feed_dict=None,
+        use_regularization_loss=True,
+        max_epoch=256,
+        max_step=None,
+        batch_size=256,
+        valid_batch_size=1024,
+        valid_step_freq=100,
+        initial_lr=0.001,
+        lr_anneal_epochs=10,
+        lr_anneal_factor=0.75,
+        optimizer=tf.train.AdamOptimizer,
+        optimizer_params=None,
+        grad_clip_norm=50.0,
+        check_numerics=True,
+        name=None,
+        scope=None,
+    ):
         super(Trainer, self).__init__(name=name, scope=scope)
 
         # memorize the arguments
@@ -90,8 +106,9 @@ class Trainer(VarScopeObject):
         else:
             self._valid_feed_dict = self._feed_dict
         if max_epoch is None and max_step is None:
-            raise ValueError('At least one of `max_epoch` and `max_step` '
-                             'should be specified')
+            raise ValueError(
+                "At least one of `max_epoch` and `max_step` " "should be specified"
+            )
         self._max_epoch = max_epoch
         self._max_step = max_step
         self._batch_size = batch_size
@@ -105,27 +122,33 @@ class Trainer(VarScopeObject):
         with reopen_variable_scope(self.variable_scope):
             # the global step for this model
             self._global_step = tf.get_variable(
-                dtype=tf.int64, name='global_step', trainable=False,
-                initializer=tf.constant(0, dtype=tf.int64)
+                dtype=tf.int64,
+                name="global_step",
+                trainable=False,
+                initializer=tf.constant(0, dtype=tf.int64),
             )
 
             # input placeholders
             self._input_x = tf.placeholder(
-                dtype=tf.float32, shape=[None, model.window_length, model.x_dims], name='input_x')
+                dtype=tf.float32,
+                shape=[None, model.window_length, model.x_dims],
+                name="input_x",
+            )
             self._learning_rate = tf.placeholder(
-                dtype=tf.float32, shape=(), name='learning_rate')
+                dtype=tf.float32, shape=(), name="learning_rate"
+            )
 
             # compose the training loss
-            with tf.name_scope('loss'):
-                loss = model.get_training_loss(
-                    x=self._input_x, n_z=n_z)
+            with tf.name_scope("loss"):
+                loss = model.get_training_loss(x=self._input_x, n_z=n_z)
                 if use_regularization_loss:
                     loss += tf.losses.get_regularization_loss()
                 self._loss = loss
 
             # get the training variables
             train_params = get_variables_as_dict(
-                scope=model_vs, collection=tf.GraphKeys.TRAINABLE_VARIABLES)
+                scope=model_vs, collection=tf.GraphKeys.TRAINABLE_VARIABLES
+            )
             self._train_params = train_params
 
             # create the trainer
@@ -133,7 +156,7 @@ class Trainer(VarScopeObject):
                 optimizer_params = {}
             else:
                 optimizer_params = dict(six.iteritems(optimizer_params))
-            optimizer_params['learning_rate'] = self._learning_rate
+            optimizer_params["learning_rate"] = self._learning_rate
             self._optimizer = optimizer(**optimizer_params)
 
             # derive the training gradient
@@ -147,28 +170,35 @@ class Trainer(VarScopeObject):
                         grad = tf.clip_by_norm(grad, grad_clip_norm)
                     if check_numerics:
                         grad = tf.check_numerics(
-                            grad,
-                            'gradient for {} has numeric issue'.format(var.name)
+                            grad, "gradient for {} has numeric issue".format(var.name)
                         )
                     grad_vars.append((grad, var))
 
             # build the training op
-            with tf.control_dependencies(
-                    tf.get_collection(tf.GraphKeys.UPDATE_OPS)):
+            with tf.control_dependencies(tf.get_collection(tf.GraphKeys.UPDATE_OPS)):
                 self._train_op = self._optimizer.apply_gradients(
-                    grad_vars, global_step=self._global_step)
+                    grad_vars, global_step=self._global_step
+                )
 
             # the training summary in case `summary_dir` is specified
-            with tf.name_scope('summary'):
-                self._summary_op = tf.summary.merge([
-                    tf.summary.histogram(v.name.rsplit(':', 1)[0], v)
-                    for v in six.itervalues(self._train_params)
-                ])
+            with tf.name_scope("summary"):
+                self._summary_op = tf.summary.merge(
+                    [
+                        tf.summary.histogram(v.name.rsplit(":", 1)[0], v)
+                        for v in six.itervalues(self._train_params)
+                    ]
+                )
 
             # initializer for the variables
             self._trainer_initializer = tf.variables_initializer(
-                list(six.itervalues(get_variables_as_dict(scope=self.variable_scope,
-                                                          collection=tf.GraphKeys.GLOBAL_VARIABLES)))
+                list(
+                    six.itervalues(
+                        get_variables_as_dict(
+                            scope=self.variable_scope,
+                            collection=tf.GraphKeys.GLOBAL_VARIABLES,
+                        )
+                    )
+                )
             )
 
     @property
@@ -181,8 +211,7 @@ class Trainer(VarScopeObject):
         """
         return self._model
 
-    def fit(self, values,
-            valid_portion=0.3, summary_dir=None):
+    def fit(self, values, valid_portion=0.3, summary_dir=None):
         """
         Train the :class:`OmniAnomaly` model with given data.
 
@@ -200,7 +229,7 @@ class Trainer(VarScopeObject):
         # split the training & validation set
         values = np.asarray(values, dtype=np.float32)
         if len(values.shape) != 2:
-            raise ValueError('`values` must be a 2-D array')
+            raise ValueError("`values` must be a 2-D array")
 
         n = int(len(values) * valid_portion)
         train_values, v_x = values[:-n], values[-n:]
@@ -225,18 +254,20 @@ class Trainer(VarScopeObject):
         # training loop
         lr = self._initial_lr
         with TrainLoop(
-                param_vars=self._train_params,
-                early_stopping=True,
-                summary_dir=summary_dir,
-                max_epoch=self._max_epoch,
-                max_step=self._max_step) as loop:  # type: TrainLoop
+            param_vars=self._train_params,
+            early_stopping=True,
+            summary_dir=summary_dir,
+            max_epoch=self._max_epoch,
+            max_step=self._max_step,
+        ) as loop:  # type: TrainLoop
             loop.print_training_summary()
 
             train_batch_time = []
             valid_batch_time = []
 
+            time_train_start = time.time()
             for epoch in loop.iter_epochs():
-                print('train_values:', train_values.shape)
+                print("train_values:", train_values.shape)
                 train_iterator = train_sliding_window.get_iterator([train_values])
                 start_time = time.time()
                 for step, (batch_x,) in loop.iter_steps(train_iterator):
@@ -246,25 +277,26 @@ class Trainer(VarScopeObject):
                     feed_dict[self._learning_rate] = lr
                     feed_dict[self._input_x] = batch_x
                     loss, _ = sess.run(
-                        [self._loss, self._train_op], feed_dict=feed_dict)
-                    loop.collect_metrics({'loss': loss})
+                        [self._loss, self._train_op], feed_dict=feed_dict
+                    )
+                    loop.collect_metrics({"loss": loss})
                     train_batch_time.append(time.time() - start_batch_time)
 
                     if step % self._valid_step_freq == 0:
                         train_duration = time.time() - start_time
-                        loop.collect_metrics({'train_time': train_duration})
+                        loop.collect_metrics({"train_time": train_duration})
                         # collect variable summaries
                         if summary_dir is not None:
                             loop.add_summary(sess.run(self._summary_op))
 
                         # do validation in batches
-                        with loop.timeit('valid_time'), \
-                                loop.metric_collector('valid_loss') as mc:
+                        with loop.timeit("valid_time"), loop.metric_collector(
+                            "valid_loss"
+                        ) as mc:
                             v_it = valid_sliding_window.get_iterator([v_x])
                             for (b_v_x,) in v_it:
                                 start_batch_time = time.time()
-                                feed_dict = dict(
-                                    six.iteritems(self._valid_feed_dict))
+                                feed_dict = dict(six.iteritems(self._valid_feed_dict))
                                 feed_dict[self._input_x] = b_v_x
                                 loss = sess.run(self._loss, feed_dict=feed_dict)
                                 valid_batch_time.append(time.time() - start_batch_time)
@@ -275,14 +307,16 @@ class Trainer(VarScopeObject):
                         start_time = time.time()
 
                 # anneal the learning rate
-                if self._lr_anneal_epochs and \
-                        epoch % self._lr_anneal_epochs == 0:
+                if self._lr_anneal_epochs and epoch % self._lr_anneal_epochs == 0:
                     lr *= self._lr_anneal_factor
-                    loop.println('Learning rate decreased to {}'.format(lr),
-                                 with_tag=True)
+                    loop.println(
+                        "Learning rate decreased to {}".format(lr), with_tag=True
+                    )
 
+            time_train_end = time.time()
             return {
-                'best_valid_loss': float(loop.best_valid_metric),
-                'train_time': np.mean(train_batch_time),
-                'valid_time': np.mean(valid_batch_time),
+                "best_valid_loss": float(loop.best_valid_metric),
+                "train_time": np.sum(train_batch_time),
+                "valid_time": np.sum(valid_batch_time),
+                "total_train_time": time_train_end - time_train_start,
             }
