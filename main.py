@@ -23,7 +23,7 @@ from omni_anomaly.utils import get_data_dim, get_data, save_z
 
 class ExpConfig(Config):
     # dataset configuration
-    dataset = "machine-1-1"
+    dataset = "SMAP"
     # dataset = "SMAP"
     x_dim = get_data_dim(dataset)
 
@@ -33,7 +33,7 @@ class ExpConfig(Config):
 
     # model parameters
     z_dim = 3
-    rnn_cell = "GRU"  # 'GRU', 'LSTM' or 'Basic'
+    rnn_cell = "LSTM"  # 'GRU', 'LSTM' or 'Basic'
     rnn_num_hidden = 500
     window_length = 100
     dense_dim = 500
@@ -42,7 +42,7 @@ class ExpConfig(Config):
     max_epoch = 10
     train_start = 0
     max_train_size = None  # `None` means full train set
-    batch_size = 50
+    batch_size = 64
     l2_reg = 0.0001
     initial_lr = 0.001
     lr_anneal_factor = 0.5
