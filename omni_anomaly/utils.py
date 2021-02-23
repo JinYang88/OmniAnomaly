@@ -4,8 +4,83 @@ import pickle
 
 import numpy as np
 from sklearn.preprocessing import MinMaxScaler
+from glob import glob
+from collections import defaultdict
+from sklearn.metrics import f1_score, precision_score, recall_score, roc_auc_score
 
 prefix = "processed"
+
+data_path_dict = {
+    "SMD": "./datasets/anomaly/SMD/processed",
+    "SMAP": "./datasets/anomaly/SMAP-MSL/processed_SMAP",
+    "MSL": "./datasets/anomaly/SMAP-MSL/processed_MSL",
+}
+
+
+def get_data_dim(dataset):
+    if dataset == "SMAP":
+        return 25
+    elif dataset == "MSL":
+        return 55
+    elif dataset == "SMD" or str(dataset).startswith("machine"):
+        return 38
+    else:
+        raise ValueError("unknown dataset " + str(dataset))
+
+
+def load_dataset(dataset, subdataset, use_dim="all"):
+    print("Loading {} of {} dataset".format(subdataset, dataset))
+    x_dim = get_data_dim(dataset)
+    path = data_path_dict[dataset]
+
+    prefix = subdataset
+    train_files = glob(os.path.join(path, prefix + "_train.pkl"))
+    test_files = glob(os.path.join(path, prefix + "_test.pkl"))
+    label_files = glob(os.path.join(path, prefix + "_test_label.pkl"))
+
+    print("{} files found.".format(len(train_files)))
+
+    data_dict = defaultdict(dict)
+    data_dict["dim"] = x_dim if use_dim == "all" else 1
+
+    train_data_list = []
+    for idx, f_name in enumerate(train_files):
+        machine_name = os.path.basename(f_name).split("_")[0]
+        f = open(f_name, "rb")
+        train_data = pickle.load(f).reshape((-1, x_dim))
+        f.close()
+        if use_dim != "all":
+            train_data = train_data[:, use_dim].reshape(-1, 1)
+        if len(train_data) > 0:
+            train_data_list.append(train_data)
+    data_dict["train"] = np.concatenate(train_data_list, axis=0)
+
+    test_data_list = []
+    for idx, f_name in enumerate(test_files):
+        machine_name = os.path.basename(f_name).split("_")[0]
+        f = open(f_name, "rb")
+        test_data = pickle.load(f).reshape((-1, x_dim))
+        f.close()
+        if use_dim != "all":
+            test_data = test_data[:, use_dim].reshape(-1, 1)
+        if len(test_data) > 0:
+            test_data_list.append(test_data)
+    data_dict["test"] = np.concatenate(test_data_list, axis=0)
+
+    label_data_list = []
+    for idx, f_name in enumerate(label_files):
+        machine_name = os.path.basename(f_name).split("_")[0]
+        f = open(f_name, "rb")
+        label_data = pickle.load(f)
+        f.close()
+        if len(label_data) > 0:
+            label_data_list.append(label_data)
+    data_dict["test_labels"] = np.concatenate(label_data_list, axis=0)
+
+    train_data = preprocess(data_dict["train"])
+    test_data = preprocess(data_dict["test"])
+    # return data_dict
+    return (train_data, None), (test_data, data_dict["test_labels"])
 
 
 def save_z(z, filename="z"):
@@ -26,15 +101,15 @@ def save_z(z, filename="z"):
             file.write("\n")
 
 
-def get_data_dim(dataset):
-    if dataset == "SMAP":
-        return 25
-    elif dataset == "MSL":
-        return 55
-    elif str(dataset).startswith("machine"):
-        return 38
-    else:
-        raise ValueError("unknown dataset " + str(dataset))
+# def get_data_dim(dataset):
+#     if dataset == "SMAP":
+#         return 25
+#     elif dataset == "MSL":
+#         return 55
+#     elif str(dataset).startswith("machine"):
+#         return 38
+#     else:
+#         raise ValueError("unknown dataset " + str(dataset))
 
 
 def get_data(
@@ -234,3 +309,181 @@ class BatchSlidingWindow(object):
         ):
             idx = self._indices[s] + self._offsets
             yield tuple(a[idx] if len(a.shape) == 1 else a[idx, :] for a in arrays)
+
+
+def iter_thresholds(score, label):
+    best_f1 = -float("inf")
+    best_theta = None
+    best_adjust = None
+    best_raw = None
+    for anomaly_ratio in np.linspace(1e-3, 1, 500):
+        info_save = {}
+        adjusted_anomaly, raw_predict, threshold = score2pred(
+            score, label, percent=100 * (1 - anomaly_ratio)
+        )
+
+        f1 = f1_score(adjusted_anomaly, label)
+        if f1 > best_f1:
+            best_f1 = f1
+            best_adjust = adjusted_anomaly
+            best_raw = raw_predict
+            best_theta = threshold
+    return best_f1, best_theta, best_adjust, best_raw
+
+
+def score2pred(
+    score,
+    label,
+    percent=None,
+    threshold=None,
+    pred=None,
+    calc_latency=False,
+):
+    """
+    Calculate adjusted predict labels using given `score`, `threshold` (or given `pred`) and `label`.
+    Args:
+        score (np.ndarray): The anomaly score
+        label (np.ndarray): The ground-truth label
+        threshold (float): The threshold of anomaly score.
+            A point is labeled as "anomaly" if its score is higher than the threshold.
+        pred (np.ndarray or None): if not None, adjust `pred` and ignore `score` and `threshold`,
+        calc_latency (bool):
+    Returns:
+        np.ndarray: predict labels
+    """
+    if score is not None:
+        if len(score) != len(label):
+            raise ValueError("score and label must have the same length")
+        score = np.asarray(score)
+    label = np.asarray(label)
+    latency = 0
+    if pred is None:
+        if percent is not None:
+            threshold = np.percentile(score, percent)
+            # print("Threshold for {} percent is: {:.2f}".format(percent, threshold))
+            predict = score > threshold
+        elif threshold is not None:
+            predict = score > threshold
+    else:
+        predict = pred
+
+    import copy
+
+    raw_predict = copy.deepcopy(predict)
+
+    actual = label == 1
+    anomaly_state = False
+    anomaly_count = 0
+    for i in range(len(predict)):
+        if actual[i] and predict[i] and not anomaly_state:
+            anomaly_state = True
+            anomaly_count += 1
+            for j in range(i, 0, -1):
+                if not actual[j]:
+                    break
+                else:
+                    if not predict[j]:
+                        predict[j] = True
+                        latency += 1
+        elif not actual[i]:
+            anomaly_state = False
+        if anomaly_state:
+            predict[i] = True
+
+    if calc_latency:
+        return predict, latency / (anomaly_count + 1e-4)
+    else:
+        return predict, raw_predict, threshold
+
+
+subdatasets = {
+    "SMD": ["machine-1-{}".format(i) for i in range(1, 9)]
+    + ["machine-2-{}".format(i) for i in range(1, 10)]
+    + ["machine-3-{}".format(i) for i in range(1, 12)],
+    "SMAP": [
+        "P-1",
+        "S-1",
+        "E-1",
+        "E-2",
+        "E-3",
+        "E-4",
+        "E-5",
+        "E-6",
+        "E-7",
+        "E-8",
+        "E-9",
+        "E-10",
+        "E-11",
+        "E-12",
+        "E-13",
+        "A-1",
+        "D-1",
+        "P-2",
+        "P-3",
+        "D-2",
+        "D-3",
+        "D-4",
+        "A-2",
+        "A-3",
+        "A-4",
+        "G-1",
+        "G-2",
+        "D-5",
+        "D-6",
+        "D-7",
+        "F-1",
+        "P-4",
+        "G-3",
+        "T-1",
+        "T-2",
+        "D-8",
+        "D-9",
+        "F-2",
+        "G-4",
+        "T-3",
+        "D-11",
+        "D-12",
+        "B-1",
+        "G-6",
+        "G-7",
+        "P-7",
+        "R-1",
+        "A-5",
+        "A-6",
+        "A-7",
+        "D-13",
+        "P-2",
+        "A-8",
+        "A-9",
+        "F-3",
+    ],
+    "MSL": [
+        "M-6",
+        "M-1",
+        "M-2",
+        "S-2",
+        "P-10",
+        "T-4",
+        "T-5",
+        "F-7",
+        "M-3",
+        "M-4",
+        "M-5",
+        "P-15",
+        "C-1",
+        "C-2",
+        "T-12",
+        "T-13",
+        "F-4",
+        "F-5",
+        "D-14",
+        "T-9",
+        "P-14",
+        "T-8",
+        "P-11",
+        "D-15",
+        "D-16",
+        "M-7",
+        "F-8",
+    ],
+}

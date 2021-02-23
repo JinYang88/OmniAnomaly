@@ -9,16 +9,31 @@ from argparse import ArgumentParser
 from pprint import pformat, pprint
 
 import numpy as np
+import pandas as pd
 import tensorflow as tf
 from tfsnippet.examples.utils import MLResults, print_with_title
 from tfsnippet.scaffold import VariableSaver
-from tfsnippet.utils import get_variables_as_dict, register_config_arguments, Config
+from tfsnippet.utils import (
+    get_variables_as_dict,
+    register_config_arguments,
+    Config,
+)
 
 from omni_anomaly.eval_methods import pot_eval, bf_search
 from omni_anomaly.model import OmniAnomaly
 from omni_anomaly.prediction import Predictor
 from omni_anomaly.training import Trainer
-from omni_anomaly.utils import get_data_dim, get_data, save_z
+from omni_anomaly.utils import (
+    get_data_dim,
+    get_data,
+    save_z,
+    iter_thresholds,
+    load_dataset,
+    subdatasets,
+)
+from sklearn.metrics import f1_score, precision_score, recall_score, roc_auc_score
+
+from IPython import embed
 
 
 class ExpConfig(Config):
@@ -33,7 +48,7 @@ class ExpConfig(Config):
 
     # model parameters
     z_dim = 3
-    rnn_cell = "LSTM"  # 'GRU', 'LSTM' or 'Basic'
+    rnn_cell = "GRU"  # 'GRU', 'LSTM' or 'Basic'
     rnn_num_hidden = 500
     window_length = 100
     dense_dim = 500
@@ -86,20 +101,23 @@ class ExpConfig(Config):
     test_score_filename = "test_score.pkl"
 
 
-def main():
+def main(dataset, subdataset):
     logging.basicConfig(
         level="INFO", format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
     )
 
-    # prepare the data
-    (x_train, _), (x_test, y_test) = get_data(
-        config.dataset,
-        config.max_train_size,
-        config.max_test_size,
-        train_start=config.train_start,
-        test_start=config.test_start,
-    )
+    # # prepare the data
+    # (x_train, _), (x_test, y_test) = get_data(
+    #     config.dataset,
+    #     config.max_train_size,
+    #     config.max_test_size,
+    #     train_start=config.train_start,
+    #     test_start=config.test_start,
+    # )
 
+    (x_train, _), (x_test, y_test) = load_dataset(dataset, subdataset)
+
+    tf.reset_default_graph()
     # construct the model under `variable_scope` named 'model'
     with tf.variable_scope("model") as model_vs:
         model = OmniAnomaly(config=config, name="model")
@@ -209,6 +227,8 @@ def main():
                             "FN": t[6],
                             "latency": t[-1],
                             "threshold": th,
+                            "test_score": test_score,
+                            "labels": y_test[-len(test_score) :],
                         }
                     )
                     best_valid_metrics.update(pot_result)
@@ -226,34 +246,89 @@ def main():
 
 
 if __name__ == "__main__":
-
-    # get config obj
-    config = ExpConfig()
-
-    # parse the arguments
     arg_parser = ArgumentParser()
     arg_parser.add_argument("-ws", "--window_size", default=32, required=False)
-    register_config_arguments(config, arg_parser)
+
     args = arg_parser.parse_args(sys.argv[1:])
 
-    config.window_length = args.window_size
+    dataset = "SMD"
 
-    config.x_dim = get_data_dim(config.dataset)
+    detail_dir = "./details"
+    os.makedirs(detail_dir, exist_ok=True)
 
-    print_with_title("Configurations", pformat(config.to_dict()), after="\n")
+    start_time = time.strftime("%Y%m%d-%H%M%S", time.localtime(time.time()))
+    config = ExpConfig()
+    # parse the arguments
+    register_config_arguments(config, arg_parser)
+    for subdataset in subdatasets[dataset][0:2]:
+        # get config obj
+        config.window_length = args.window_size
+        config.x_dim = get_data_dim(dataset)
 
-    # open the result object and prepare for result directories if specified
-    results = MLResults(config.result_dir)
-    results.save_config(config)  # save experiment settings for review
-    results.make_dirs(config.save_dir, exist_ok=True)
-    with warnings.catch_warnings():
-        # suppress DeprecationWarning from NumPy caused by codes in TensorFlow-Probability
-        warnings.filterwarnings("ignore", category=DeprecationWarning, module="numpy")
-        best_valid_metrics = main()
+        # print_with_title("Configurations", pformat(config.to_dict()), after="\n")
+        # open the result object and prepare for result directories if specified
+        results = MLResults(config.result_dir)
+        results.save_config(config)  # save experiment settings for review
+        results.make_dirs(config.save_dir, exist_ok=True)
 
-        with open("running_time.txt", "a+") as fw:
-            tr_time = best_valid_metrics["train_time"]
-            te_time = best_valid_metrics["pred_time"]
-            fw.write("window_size: {} ".format(config.window_length))
-            fw.write("train: {:.4f} ".format(tr_time))
-            fw.write("test: {:.4f}\n".format(te_time))
+        records = []
+        with warnings.catch_warnings():
+            # suppress DeprecationWarning from NumPy caused by codes in TensorFlow-Probability
+            warnings.filterwarnings(
+                "ignore", category=DeprecationWarning, module="numpy"
+            )
+
+            best_valid_metrics = main(dataset, subdataset)
+
+            with open("running_time.txt", "a+") as fw:
+                tr_time = best_valid_metrics["train_time"]
+                te_time = best_valid_metrics["pred_time"]
+                fw.write("window_size: {} ".format(config.window_length))
+                fw.write("train: {:.4f} ".format(tr_time))
+                fw.write("test: {:.4f}\n".format(te_time))
+
+            score = best_valid_metrics["test_score"]
+            anomaly_label = best_valid_metrics["labels"]
+            best_f1, best_theta, pred_adjusted, best_raw = iter_thresholds(
+                score, anomaly_label
+            )
+            raw_f1 = f1_score(best_raw, anomaly_label)
+            ps_adjusted = precision_score(pred_adjusted, anomaly_label)
+            rc_adjusted = recall_score(pred_adjusted, anomaly_label)
+            auc = roc_auc_score(anomaly_label, score)
+            record = {
+                "score": score,
+                "pred_raw": best_raw,
+                "pred": pred_adjusted,
+                "anomaly_label": anomaly_label,
+                "theta": best_theta,
+                "AUC": auc,
+                "F1": raw_f1,
+                "F1_adj": best_f1,
+                "PS_adj": ps_adjusted,
+                "RC_adj": rc_adjusted,
+                "train_time": best_valid_metrics["train_time"],
+                "test_time": best_valid_metrics["pred_time"],
+            }
+            records.append(record)
+    records = pd.DataFrame(records)
+    records.to_csv(
+        "./{}/{}-{}-all.csv".format(detail_dir, dataset, start_time),
+        index=False,
+    )
+
+    log = "{}\t{}\t{}\t{}\tAUC-{:.4f}\tF1-{:.4f}\tF1_adj-{:.4f}\tPS_adj-{:.4f}\tRC_adj-{:.4f}\ttrain-{}s\ttest-{}s\n".format(
+        start_time,
+        args.window_size,
+        "Omni",
+        dataset + "_all",
+        records["AUC"].mean(),
+        records["F1"].mean(),
+        records["F1_adj"].mean(),
+        records["PS_adj"].mean(),
+        records["RC_adj"].mean(),
+        records["train_time"].sum(),
+        records["test_time"].sum(),
+    )
+    with open("./total_results.csv", "a+") as fw:
+        fw.write(log)

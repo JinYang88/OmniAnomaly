@@ -126,6 +126,7 @@ class Trainer(VarScopeObject):
                 name="global_step",
                 trainable=False,
                 initializer=tf.constant(0, dtype=tf.int64),
+                # reuse=True,
             )
 
             # input placeholders
