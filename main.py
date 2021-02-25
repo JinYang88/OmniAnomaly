@@ -248,11 +248,15 @@ def main(dataset, subdataset):
 if __name__ == "__main__":
     arg_parser = ArgumentParser()
     arg_parser.add_argument("-ws", "--window_size", default=32, required=False)
+    arg_parser.add_argument("-sb", "--subdataset", default="", required=False)
 
     args = arg_parser.parse_args(sys.argv[1:])
 
     dataset = "SMD"
 
+    valid_subdatasets = (
+        subdatasets[dataset] if not args.subdataset else [args.subdataset]
+    )
     detail_dir = "./details"
     os.makedirs(detail_dir, exist_ok=True)
 
@@ -260,7 +264,7 @@ if __name__ == "__main__":
     config = ExpConfig()
     # parse the arguments
     register_config_arguments(config, arg_parser)
-    for subdataset in subdatasets[dataset][0:2]:
+    for subdataset in valid_subdatasets:
         # get config obj
         config.window_length = args.window_size
         config.x_dim = get_data_dim(dataset)
