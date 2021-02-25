@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import os
 import pickle
+import copy
 
 import numpy as np
 from sklearn.preprocessing import MinMaxScaler
@@ -28,7 +29,7 @@ def get_data_dim(dataset):
         raise ValueError("unknown dataset " + str(dataset))
 
 
-def load_dataset(dataset, subdataset, use_dim="all"):
+def load_dataset(dataset, subdataset, use_dim="all", nrows=10000):
     print("Loading {} of {} dataset".format(subdataset, dataset))
     x_dim = get_data_dim(dataset)
     path = data_path_dict[dataset]
@@ -50,9 +51,9 @@ def load_dataset(dataset, subdataset, use_dim="all"):
         train_data = pickle.load(f).reshape((-1, x_dim))
         f.close()
         if use_dim != "all":
-            train_data = train_data[:, use_dim].reshape(-1, 1)
+            train_data = train_data[:nrows, use_dim].reshape(-1, 1)
         if len(train_data) > 0:
-            train_data_list.append(train_data)
+            train_data_list.append(train_data[:nrows])
     data_dict["train"] = np.concatenate(train_data_list, axis=0)
 
     test_data_list = []
@@ -62,16 +63,16 @@ def load_dataset(dataset, subdataset, use_dim="all"):
         test_data = pickle.load(f).reshape((-1, x_dim))
         f.close()
         if use_dim != "all":
-            test_data = test_data[:, use_dim].reshape(-1, 1)
+            test_data = test_data[:nrows, use_dim].reshape(-1, 1)
         if len(test_data) > 0:
-            test_data_list.append(test_data)
+            test_data_list.append(test_data[:nrows])
     data_dict["test"] = np.concatenate(test_data_list, axis=0)
 
     label_data_list = []
     for idx, f_name in enumerate(label_files):
         machine_name = os.path.basename(f_name).split("_")[0]
         f = open(f_name, "rb")
-        label_data = pickle.load(f)
+        label_data = pickle.load(f)[:nrows]
         f.close()
         if len(label_data) > 0:
             label_data_list.append(label_data)
@@ -316,10 +317,10 @@ def iter_thresholds(score, label):
     best_theta = None
     best_adjust = None
     best_raw = None
-    for anomaly_ratio in np.linspace(1e-3, 1, 500):
+    for anomaly_ratio in np.linspace(1e-3, 1, 500)[0:1]:
         info_save = {}
         adjusted_anomaly, raw_predict, threshold = score2pred(
-            score, label, percent=100 * (1 - anomaly_ratio)
+            score, label, percent=100 * (1 - anomaly_ratio), adjust=False
         )
 
         f1 = f1_score(adjusted_anomaly, label)
@@ -338,6 +339,7 @@ def score2pred(
     threshold=None,
     pred=None,
     calc_latency=False,
+    adjust=True,
 ):
     """
     Calculate adjusted predict labels using given `score`, `threshold` (or given `pred`) and `label`.
@@ -367,7 +369,8 @@ def score2pred(
     else:
         predict = pred
 
-    import copy
+    if not adjust:
+        return predict, predict, threshold
 
     raw_predict = copy.deepcopy(predict)
 
