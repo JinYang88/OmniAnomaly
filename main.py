@@ -264,6 +264,7 @@ if __name__ == "__main__":
     config = ExpConfig()
     # parse the arguments
     register_config_arguments(config, arg_parser)
+    print("Run on {} of {}".format(str(valid_subdatasets), dataset))
     for subdataset in valid_subdatasets:
         # get config obj
         config.window_length = args.window_size
