@@ -29,7 +29,7 @@ def get_data_dim(dataset):
         raise ValueError("unknown dataset " + str(dataset))
 
 
-def load_dataset(dataset, subdataset, use_dim="all", nrows=10000):
+def load_dataset(dataset, subdataset, use_dim="all", nrows=None):
     print("Loading {} of {} dataset".format(subdataset, dataset))
     x_dim = get_data_dim(dataset)
     path = data_path_dict[dataset]

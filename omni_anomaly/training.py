@@ -283,29 +283,29 @@ class Trainer(VarScopeObject):
                     loop.collect_metrics({"loss": loss})
                     train_batch_time.append(time.time() - start_batch_time)
 
-                    if step % self._valid_step_freq == 0:
-                        train_duration = time.time() - start_time
-                        loop.collect_metrics({"train_time": train_duration})
-                        # collect variable summaries
-                        if summary_dir is not None:
-                            loop.add_summary(sess.run(self._summary_op))
+                    # if step % self._valid_step_freq == 0:
+                    #     train_duration = time.time() - start_time
+                    #     loop.collect_metrics({"train_time": train_duration})
+                    #     # collect variable summaries
+                    #     if summary_dir is not None:
+                    #         loop.add_summary(sess.run(self._summary_op))
 
-                        # do validation in batches
-                        with loop.timeit("valid_time"), loop.metric_collector(
-                            "valid_loss"
-                        ) as mc:
-                            v_it = valid_sliding_window.get_iterator([v_x])
-                            for (b_v_x,) in v_it:
-                                start_batch_time = time.time()
-                                feed_dict = dict(six.iteritems(self._valid_feed_dict))
-                                feed_dict[self._input_x] = b_v_x
-                                loss = sess.run(self._loss, feed_dict=feed_dict)
-                                valid_batch_time.append(time.time() - start_batch_time)
-                                mc.collect(loss, weight=len(b_v_x))
+                    #     # do validation in batches
+                    #     with loop.timeit("valid_time"), loop.metric_collector(
+                    #         "valid_loss"
+                    #     ) as mc:
+                    #         v_it = valid_sliding_window.get_iterator([v_x])
+                    #         for (b_v_x,) in v_it:
+                    #             start_batch_time = time.time()
+                    #             feed_dict = dict(six.iteritems(self._valid_feed_dict))
+                    #             feed_dict[self._input_x] = b_v_x
+                    #             loss = sess.run(self._loss, feed_dict=feed_dict)
+                    #             valid_batch_time.append(time.time() - start_batch_time)
+                    #             mc.collect(loss, weight=len(b_v_x))
 
-                        # print the logs of recent steps
-                        loop.print_logs()
-                        start_time = time.time()
+                    #     # print the logs of recent steps
+                    #     loop.print_logs()
+                    #     start_time = time.time()
 
                 # anneal the learning rate
                 if self._lr_anneal_epochs and epoch % self._lr_anneal_epochs == 0:
@@ -316,8 +316,8 @@ class Trainer(VarScopeObject):
 
             time_train_end = time.time()
             return {
-                "best_valid_loss": float(loop.best_valid_metric),
+                # "best_valid_loss": float(loop.best_valid_metric),
                 "train_time": np.sum(train_batch_time),
-                "valid_time": np.sum(valid_batch_time),
+                "valid_time": 0,
                 "total_train_time": time_train_end - time_train_start,
             }
