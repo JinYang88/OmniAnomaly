@@ -57,7 +57,7 @@ class ExpConfig(Config):
     max_epoch = 1
     train_start = 0
     max_train_size = None  # `None` means full train set
-    batch_size = 64
+    batch_size = 256
     l2_reg = 0.0001
     initial_lr = 0.001
     lr_anneal_factor = 0.5
