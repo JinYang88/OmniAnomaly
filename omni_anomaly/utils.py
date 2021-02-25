@@ -11,7 +11,7 @@ from sklearn.metrics import f1_score, precision_score, recall_score, roc_auc_sco
 prefix = "processed"
 
 data_path_dict = {
-    "SMD": "../../datasets/anomaly/SMD/oversampled",
+    "SMD": "./oversampled",
     "SMAP": "./datasets/anomaly/SMAP-MSL/processed_SMAP",
     "MSL": "./datasets/anomaly/SMAP-MSL/processed_MSL",
 }
